@@ -1,0 +1,30 @@
+[package]
+name = "interpreter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+lalrpop-util = "0.23.1"
+logos = "0.16.1"
+miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
+thiserror = "2.0.11"
+owo-colors = "4.2.3"
+syntect = "5.1.0"
+
+[build-dependencies]
+lalrpop = "0.23.1"
+
+[dev-dependencies]
+divan = "0.1.21"
+fastrand = "2.4.1"
+
+[profile.bench]
+debug = true
+
+[[bench]]
+name = "lexer"
+harness = false
+
+[[bench]]
+name = "parser"
+harness = false

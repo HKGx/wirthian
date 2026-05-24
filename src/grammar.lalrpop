@@ -1,0 +1,251 @@
+use crate::ast::*;
+use crate::lexer::{Token, LexicalError};
+
+grammar<'source>(input: &'source str);
+
+extern {
+    type Location = usize;
+    type Error = LexicalError;
+
+    enum Token<'source> {
+        "and" => Token::And,
+        "or" => Token::Or,
+        "not" => Token::Not,
+        "true" => Token::True,
+        "false" => Token::False,
+        "if" => Token::If,
+        "then" => Token::Then,
+        "elif" => Token::Elif,
+        "else" => Token::Else,
+        "for" => Token::For,
+        "to" => Token::To,
+        "do" => Token::Do,
+        "break" => Token::Break,
+        "continue" => Token::Continue,
+        "begin" => Token::Begin,
+        "end" => Token::End,
+        "exit" => Token::Exit,
+        "print" => Token::Print,
+        "readint" => Token::ReadInt,
+        "readstr" => Token::ReadStr,
+        "readbool" => Token::ReadBool,
+        "substring" => Token::Substring,
+        "length" => Token::Length,
+        "position" => Token::Position,
+        "concatenate" => Token::Concatenate,
+        "string" => Token::TypeString,
+        "integer" => Token::TypeInteger,
+        "boolean" => Token::TypeBoolean,
+        "+" => Token::Plus,
+        "-" => Token::Minus,
+        "*" => Token::Star,
+        "/" => Token::Slash,
+        "%" => Token::Percent,
+        "(" => Token::LParen,
+        ")" => Token::RParen,
+        ";" => Token::Semicolon,
+        "," => Token::Comma,
+        ":=" => Token::Assign,
+        "=" => Token::NumEq,
+        "<" => Token::Less,
+        "<=" => Token::LessEq,
+        ">" => Token::Greater,
+        ">=" => Token::GreaterEq,
+        "<>" => Token::NumNeq,
+        "==" => Token::StrEq,
+        "!=" => Token::StrNeq,
+        "IDENT" => Token::Ident(<&'source str>),
+        "NUM" => Token::Num(<i32>),
+        "STRING" => Token::StringLit(<&'source str>),
+    }
+}
+
+pub Program: Program<'source> = {
+    <declarations:Declarations> <instructions:Instructions> => Program { declarations, instructions }
+};
+
+Declarations: Vec<Declaration<'source>> = {
+    <mut decls:Declarations> <decl:Declaration> ";" => {
+        decls.push(decl);
+        decls
+    },
+    => vec![],
+};
+
+Declaration: Declaration<'source> = {
+    <l:@L> "string" <id:"IDENT"> <r:@R> => Declaration { var_type: Type::String, identifier: id, span: l..r },
+    <l:@L> "integer" <id:"IDENT"> <r:@R> => Declaration { var_type: Type::Integer, identifier: id, span: l..r },
+    <l:@L> "boolean" <id:"IDENT"> <r:@R> => Declaration { var_type: Type::Boolean, identifier: id, span: l..r },
+};
+
+Instructions: Vec<Statement<'source>> = {
+    <mut instrs:Instructions> <instr:SimpleInstr> ";" => {
+        instrs.push(instr);
+        instrs
+    },
+    => vec![],
+};
+
+SimpleInstr: Statement<'source> = {
+    MatchedInstr => <>,
+    UnmatchedInstr => <>,
+};
+
+MatchedInstr: Statement<'source> = {
+    BaseInstr => <>,
+    <l:@L> "for" <id:"IDENT"> ":=" <from:NumExpr> "to" <to:NumExpr> "do" <body:MatchedInstr> <r:@R> =>
+        Statement { kind: StmtKind::For { iterator: id, from, to, body: Box::new(body) }, span: l..r },
+    <l:@L> "if" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> <r:@R> => {
+        let (elif_branches, else_branch) = tail;
+        Statement { kind: StmtKind::If {
+            condition,
+            then_branch: Box::new(then_branch),
+            elif_branches,
+            else_branch: Some(Box::new(else_branch)),
+        }, span: l..r }
+    },
+};
+
+MatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Statement<'source>) = {
+    "elif" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> => {
+        let mut elifs = vec![(condition, then_branch)];
+        elifs.extend(tail.0);
+        (elifs, tail.1)
+    },
+    "else" <else_branch:MatchedInstr> => {
+        (vec![], else_branch)
+    },
+};
+
+UnmatchedInstr: Statement<'source> = {
+    <l:@L> "for" <id:"IDENT"> ":=" <from:NumExpr> "to" <to:NumExpr> "do" <body:UnmatchedInstr> <r:@R> =>
+        Statement { kind: StmtKind::For { iterator: id, from, to, body: Box::new(body) }, span: l..r },
+    <l:@L> "if" <condition:BoolExpr> "then" <then_branch:SimpleInstr> <r:@R> => {
+        Statement { kind: StmtKind::If {
+            condition,
+            then_branch: Box::new(then_branch),
+            elif_branches: vec![],
+            else_branch: None,
+        }, span: l..r }
+    },
+    <l:@L> "if" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:UnmatchedTail> <r:@R> => {
+        let (elif_branches, else_branch) = tail;
+        Statement { kind: StmtKind::If {
+            condition,
+            then_branch: Box::new(then_branch),
+            elif_branches,
+            else_branch,
+        }, span: l..r }
+    },
+};
+
+UnmatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Option<Box<Statement<'source>>>) = {
+    "elif" <condition:BoolExpr> "then" <then_branch:SimpleInstr> => {
+        (vec![(condition, then_branch)], None)
+    },
+    "elif" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:UnmatchedTail> => {
+        let mut elifs = vec![(condition, then_branch)];
+        elifs.extend(tail.0);
+        (elifs, tail.1)
+    },
+    "else" <else_branch:UnmatchedInstr> => {
+        (vec![], Some(Box::new(else_branch)))
+    },
+};
+
+BaseInstr: Statement<'source> = {
+    AssignStat => <>,
+    <l:@L> "begin" <instrs:Instructions> "end" <r:@R> => Statement { kind: StmtKind::Block(instrs), span: l..r },
+    OutputStat => <>,
+    <l:@L> "break" <r:@R> => Statement { kind: StmtKind::Break, span: l..r },
+    <l:@L> "continue" <r:@R> => Statement { kind: StmtKind::Continue, span: l..r },
+    <l:@L> "exit" <r:@R> => Statement { kind: StmtKind::Exit, span: l..r },
+};
+
+AssignStat: Statement<'source> = {
+    <l:@L> <id:"IDENT"> ":=" <e:Expr> <r:@R> => Statement { kind: StmtKind::Assign(id, e), span: l..r },
+};
+
+OutputStat: Statement<'source> = {
+    <l:@L> "print" "(" <e:Expr> ")" <r:@R> => Statement { kind: StmtKind::Print(e), span: l..r },
+};
+
+pub Expr: Expr<'source> = {
+    OrExpr => <>,
+};
+
+pub BoolExpr: Expr<'source> = {
+    OrExpr => <>,
+};
+
+NumExpr: Expr<'source> = {
+    AddExpr => <>,
+};
+
+StrExpr: Expr<'source> = {
+    OrExpr => <>,
+};
+
+OrExpr: Expr<'source> = {
+    <l:@L> <b:OrExpr> "or" <t:AndExpr> <r:@R> => Expr { kind: ExprKind::Or(Box::new(b), Box::new(t)), span: l..r },
+    AndExpr => <>,
+};
+
+AndExpr: Expr<'source> = {
+    <l:@L> <t:AndExpr> "and" <f:NotExpr> <r:@R> => Expr { kind: ExprKind::And(Box::new(t), Box::new(f)), span: l..r },
+    NotExpr => <>,
+};
+
+NotExpr: Expr<'source> = {
+    <l:@L> "not" <f:NotExpr> <r:@R> => Expr { kind: ExprKind::Not(Box::new(f)), span: l..r },
+    CompareExpr => <>,
+};
+
+CompareExpr: Expr<'source> = {
+    <l:@L> <n1:AddExpr> "=" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:AddExpr> "<" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Less(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:AddExpr> "<=" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::LessEq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:AddExpr> ">" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Greater(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:AddExpr> ">=" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::GreaterEq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:AddExpr> "<>" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <s1:AddExpr> "==" <s2:AddExpr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(s1), Box::new(s2)), span: l..r },
+    <l:@L> <s1:AddExpr> "!=" <s2:AddExpr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(s1), Box::new(s2)), span: l..r },
+    AddExpr => <>,
+};
+
+AddExpr: Expr<'source> = {
+    <l:@L> <n:AddExpr> "+" <t:MulExpr> <r:@R> => Expr { kind: ExprKind::Add(Box::new(n), Box::new(t)), span: l..r },
+    <l:@L> <n:AddExpr> "-" <t:MulExpr> <r:@R> => Expr { kind: ExprKind::Sub(Box::new(n), Box::new(t)), span: l..r },
+    MulExpr => <>,
+};
+
+MulExpr: Expr<'source> = {
+    <l:@L> <t:MulExpr> "*" <f:UnaryExpr> <r:@R> => Expr { kind: ExprKind::Mul(Box::new(t), Box::new(f)), span: l..r },
+    <l:@L> <t:MulExpr> "/" <f:UnaryExpr> <r:@R> => Expr { kind: ExprKind::Div(Box::new(t), Box::new(f)), span: l..r },
+    <l:@L> <t:MulExpr> "%" <f:UnaryExpr> <r:@R> => Expr { kind: ExprKind::Mod(Box::new(t), Box::new(f)), span: l..r },
+    UnaryExpr => <>,
+};
+
+UnaryExpr: Expr<'source> = {
+    <l:@L> "-" <f:UnaryExpr> <r:@R> => Expr {
+        kind: ExprKind::Sub(Box::new(Expr { kind: ExprKind::Number(0), span: l..l }), Box::new(f)),
+        span: l..r
+    },
+    PrimaryExpr => <>,
+};
+
+PrimaryExpr: Expr<'source> = {
+    <l:@L> <n:"NUM"> <r:@R> => Expr { kind: ExprKind::Number(n), span: l..r },
+    <l:@L> <s:"STRING"> <r:@R> => Expr { kind: ExprKind::StringLit(s), span: l..r },
+    <l:@L> <id:"IDENT"> <r:@R> => Expr { kind: ExprKind::Identifier(id), span: l..r },
+    <l:@L> "true" <r:@R> => Expr { kind: ExprKind::True, span: l..r },
+    <l:@L> "false" <r:@R> => Expr { kind: ExprKind::False, span: l..r },
+    <l:@L> "readint" <r:@R> => Expr { kind: ExprKind::ReadInt, span: l..r },
+    <l:@L> "readstr" <r:@R> => Expr { kind: ExprKind::ReadStr, span: l..r },
+    <l:@L> "readbool" <r:@R> => Expr { kind: ExprKind::ReadBool, span: l..r },
+    "(" <e:Expr> ")" => e,
+    <l:@L> "length" "(" <s:Expr> ")" <r:@R> => Expr { kind: ExprKind::Length(Box::new(s)), span: l..r },
+    <l:@L> "position" "(" <s1:Expr> "," <s2:Expr> ")" <r:@R> => Expr { kind: ExprKind::Position(Box::new(s1), Box::new(s2)), span: l..r },
+    <l:@L> "concatenate" "(" <s1:Expr> "," <s2:Expr> ")" <r:@R> => Expr { kind: ExprKind::Concatenate(Box::new(s1), Box::new(s2)), span: l..r },
+    <l:@L> "substring" "(" <s:Expr> "," <n1:Expr> "," <n2:Expr> ")" <r:@R> => Expr { kind: ExprKind::Substring(Box::new(s), Box::new(n1), Box::new(n2)), span: l..r },
+};
