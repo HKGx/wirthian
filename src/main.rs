@@ -1,5 +1,5 @@
 use interpreter::{checker, grammar, highlighter, lexer};
-use miette::MietteHandlerOpts;
+use miette::{MietteHandlerOpts, Report};
 
 fn main() -> miette::Result<()> {
     miette::set_hook(Box::new(|_| {
@@ -37,7 +37,7 @@ fn main() -> miette::Result<()> {
                 Err(report) => {
                     eprintln!("ZNALEZIONO BŁĘDY SEMANTYCZNE\n");
                     for err in report.errors {
-                        eprintln!("{:?}", miette::Report::new(err));
+                        eprintln!("{:?}", Report::new(err));
                     }
                 }
             }
