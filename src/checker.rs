@@ -105,7 +105,7 @@ impl<'source> Checker<'source> {
                         for occ_span in sorted_occurrences {
                             if !accepted_spans.iter().any(|s| overlaps(s, &occ_span)) {
                                 labels.push(LabeledSpan::new(
-                                    Some(format!("Użycie zmiennej '{}'", var)),
+                                    None,
                                     occ_span.start,
                                     occ_span.end - occ_span.start,
                                 ));

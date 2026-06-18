@@ -1,5 +1,5 @@
 use interpreter::ast::{Expr, ExprKind, Program, StmtKind, Type};
-use interpreter::grammar::{BoolExprParser, ExprParser, ProgramParser};
+use interpreter::grammar::{ExprParser, ProgramParser};
 use interpreter::lexer::{Lexer, LexicalError};
 use lalrpop_util::ParseError;
 
@@ -11,12 +11,6 @@ fn parse_program<'source>(input: &'source str) -> Program<'source> {
 
 fn parse_expr<'source>(input: &'source str) -> Expr<'source> {
     ExprParser::new().parse(input, Lexer::new(input)).unwrap()
-}
-
-fn parse_bool_expr<'source>(input: &'source str) -> Expr<'source> {
-    BoolExprParser::new()
-        .parse(input, Lexer::new(input))
-        .unwrap()
 }
 
 fn assert_ident(expr: &Expr<'_>, expected: &str) {
@@ -186,7 +180,7 @@ fn test_string_and_numeric_builtin_expressions() {
 
 #[test]
 fn test_boolean_precedence_and_comparisons() {
-    let expr = parse_bool_expr(r#"not false or 1 + 2 * 3 <= 7 and "a" != readstr"#);
+    let expr = parse_expr(r#"not false or 1 + 2 * 3 <= 7 and "a" != readstr"#);
 
     match &expr.kind {
         ExprKind::Or(left, right) => {

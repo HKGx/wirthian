@@ -86,6 +86,7 @@ Instructions: Vec<Statement<'source>> = {
     => vec![],
 };
 
+#[inline]
 SimpleInstr: Statement<'source> = {
     MatchedInstr => <>,
     UnmatchedInstr => <>,
@@ -93,9 +94,9 @@ SimpleInstr: Statement<'source> = {
 
 MatchedInstr: Statement<'source> = {
     BaseInstr => <>,
-    <l:@L> "for" <id:"IDENT"> ":=" <from:NumExpr> "to" <to:NumExpr> "do" <body:MatchedInstr> <r:@R> =>
+    <l:@L> "for" <id:"IDENT"> ":=" <from:Expr> "to" <to:Expr> "do" <body:MatchedInstr> <r:@R> =>
         Statement { kind: StmtKind::For { iterator: id, from, to, body: Box::new(body) }, span: l..r },
-    <l:@L> "if" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> <r:@R> => {
+    <l:@L> "if" <condition:Expr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> <r:@R> => {
         let (elif_branches, else_branch) = tail;
         Statement { kind: StmtKind::If {
             condition,
@@ -107,7 +108,7 @@ MatchedInstr: Statement<'source> = {
 };
 
 MatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Statement<'source>) = {
-    "elif" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> => {
+    "elif" <condition:Expr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> => {
         let mut elifs = vec![(condition, then_branch)];
         elifs.extend(tail.0);
         (elifs, tail.1)
@@ -118,9 +119,9 @@ MatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Statement<'source>) = {
 };
 
 UnmatchedInstr: Statement<'source> = {
-    <l:@L> "for" <id:"IDENT"> ":=" <from:NumExpr> "to" <to:NumExpr> "do" <body:UnmatchedInstr> <r:@R> =>
+    <l:@L> "for" <id:"IDENT"> ":=" <from:Expr> "to" <to:Expr> "do" <body:UnmatchedInstr> <r:@R> =>
         Statement { kind: StmtKind::For { iterator: id, from, to, body: Box::new(body) }, span: l..r },
-    <l:@L> "if" <condition:BoolExpr> "then" <then_branch:SimpleInstr> <r:@R> => {
+    <l:@L> "if" <condition:Expr> "then" <then_branch:SimpleInstr> <r:@R> => {
         Statement { kind: StmtKind::If {
             condition,
             then_branch: Box::new(then_branch),
@@ -128,7 +129,7 @@ UnmatchedInstr: Statement<'source> = {
             else_branch: None,
         }, span: l..r }
     },
-    <l:@L> "if" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:UnmatchedTail> <r:@R> => {
+    <l:@L> "if" <condition:Expr> "then" <then_branch:MatchedInstr> <tail:UnmatchedTail> <r:@R> => {
         let (elif_branches, else_branch) = tail;
         Statement { kind: StmtKind::If {
             condition,
@@ -140,10 +141,10 @@ UnmatchedInstr: Statement<'source> = {
 };
 
 UnmatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Option<Box<Statement<'source>>>) = {
-    "elif" <condition:BoolExpr> "then" <then_branch:SimpleInstr> => {
+    "elif" <condition:Expr> "then" <then_branch:SimpleInstr> => {
         (vec![(condition, then_branch)], None)
     },
-    "elif" <condition:BoolExpr> "then" <then_branch:MatchedInstr> <tail:UnmatchedTail> => {
+    "elif" <condition:Expr> "then" <then_branch:MatchedInstr> <tail:UnmatchedTail> => {
         let mut elifs = vec![(condition, then_branch)];
         elifs.extend(tail.0);
         (elifs, tail.1)
@@ -153,6 +154,7 @@ UnmatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Option<Box<Statement<'
     },
 };
 
+#[inline]
 BaseInstr: Statement<'source> = {
     AssignStat => <>,
     <l:@L> "begin" <instrs:Instructions> "end" <r:@R> => Statement { kind: StmtKind::Block(instrs), span: l..r },
@@ -162,27 +164,17 @@ BaseInstr: Statement<'source> = {
     <l:@L> "exit" <r:@R> => Statement { kind: StmtKind::Exit, span: l..r },
 };
 
+#[inline]
 AssignStat: Statement<'source> = {
     <l:@L> <id:"IDENT"> ":=" <e:Expr> <r:@R> => Statement { kind: StmtKind::Assign(id, e), span: l..r },
 };
 
+#[inline]
 OutputStat: Statement<'source> = {
     <l:@L> "print" "(" <e:Expr> ")" <r:@R> => Statement { kind: StmtKind::Print(e), span: l..r },
 };
 
 pub Expr: Expr<'source> = {
-    OrExpr => <>,
-};
-
-pub BoolExpr: Expr<'source> = {
-    OrExpr => <>,
-};
-
-NumExpr: Expr<'source> = {
-    AddExpr => <>,
-};
-
-StrExpr: Expr<'source> = {
     OrExpr => <>,
 };
 
@@ -201,6 +193,7 @@ NotExpr: Expr<'source> = {
     CompareExpr => <>,
 };
 
+#[inline]
 CompareExpr: Expr<'source> = {
     <l:@L> <n1:AddExpr> "=" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(n1), Box::new(n2)), span: l..r },
     <l:@L> <n1:AddExpr> "<" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Less(Box::new(n1), Box::new(n2)), span: l..r },

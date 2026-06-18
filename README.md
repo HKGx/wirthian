@@ -105,3 +105,41 @@ lexer/generated_program/program_1_mib
                         thrpt:  [+23.106% +23.928% +24.745%]
                         Performance has improved.
 ```
+
+Następnie zająłem się optymalizacją parsera. LALRPOP pozwala oznaczać produkcje atrybutem `#[inline]`, który wkleja zawartość reguły bezpośrednio w miejscach jej użycia, eliminując niepotrzebne kroki redukcji w tabeli parsera LR. Oznaczyłem w ten sposób cienkie reguły opakowujące — `SimpleInstr`, `BaseInstr`, `AssignStat`, `OutputStat` oraz `CompareExpr` — które były jedynie przekaźnikami do innych produkcji.
+
+Jednocześnie usunąłem zbędne nieterminały `BoolExpr`, `NumExpr` i `StrExpr`, będące aliasami do `Expr`/`OrExpr`/`AddExpr`. Ich separacja powodowała opisane wcześniej konflikty reduce/reduce, a typechecking przeniosłem w całości do checkera.
+
+```
+parser/parse/1_kib
+                        time:   [13.81 µs 13.99 µs 15.18 µs]
+                        thrpt:  [67.83 MB/s 73.57 MB/s 74.53 MB/s]
+                 change:
+                        time:   [−5.3%]
+                        thrpt:  [+5.6%]
+                        Performance has improved.
+
+parser/parse/16_kib
+                        time:   [265.6 µs 279.4 µs 287.8 µs]
+                        thrpt:  [57.63 MB/s 59.36 MB/s 62.46 MB/s]
+                 change:
+                        time:   [−4.3%]
+                        thrpt:  [+4.5%]
+                        Performance has improved.
+
+parser/parse/256_kib
+                        time:   [5.042 ms 5.242 ms 5.264 ms]
+                        thrpt:  [49.79 MB/s 50.00 MB/s 51.99 MB/s]
+                 change:
+                        time:   [−4.4%]
+                        thrpt:  [+4.6%]
+                        Performance has improved.
+
+parser/parse/1_mib
+                        time:   [20.65 ms 21.81 ms 22.12 ms]
+                        thrpt:  [47.38 MB/s 48.06 MB/s 50.77 MB/s]
+                 change:
+                        time:   [−6.0%]
+                        thrpt:  [+6.3%]
+                        Performance has improved.
+```
