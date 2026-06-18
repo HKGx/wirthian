@@ -17,7 +17,7 @@ fn lex_all(input: &str) -> usize {
         .sum()
 }
 
-const SIZES: &[usize] = &[1024, 16 * 1024, 64 * 1024, 256 * 1024];
+const SIZES: &[usize] = &[1024, 16 * 1024, 64 * 1024, 256 * 1024, 1024 * 1024];
 
 #[divan::bench(args = SIZES)]
 fn lex(bencher: Bencher, size: usize) {

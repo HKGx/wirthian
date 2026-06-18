@@ -2,7 +2,9 @@ use fastrand::Rng;
 
 struct ProgramGenerator {
     rng: Rng,
-    symbols: Vec<Symbol>,
+    integer_symbols: Vec<Symbol>,
+    string_symbols: Vec<Symbol>,
+    boolean_symbols: Vec<Symbol>,
     next_symbol: usize,
 }
 
@@ -23,7 +25,9 @@ impl ProgramGenerator {
     fn new(len: usize) -> Self {
         Self {
             rng: Rng::with_seed(len as u64),
-            symbols: Vec::new(),
+            integer_symbols: Vec::new(),
+            string_symbols: Vec::new(),
+            boolean_symbols: Vec::new(),
             next_symbol: 0,
         }
     }
@@ -89,7 +93,8 @@ impl ProgramGenerator {
 
     fn parseable_loop_statement(&mut self, source: &mut String, depth: usize) {
         let counter = self.fresh_ident();
-        self.symbols.push(Symbol {
+
+        self.integer_symbols.push(Symbol {
             name: counter.clone(),
             ty: Type::Integer,
         });
@@ -134,7 +139,14 @@ impl ProgramGenerator {
         source.push(' ');
         source.push_str(&name);
         source.push_str(";\n");
-        self.symbols.push(Symbol { name, ty });
+
+        let bucket = match ty {
+            Type::Integer => &mut self.integer_symbols,
+            Type::String => &mut self.string_symbols,
+            Type::Boolean => &mut self.boolean_symbols,
+        };
+
+        bucket.push(Symbol { name, ty });
     }
 
     fn chance(&mut self, nominator: usize, denominator: usize) -> bool {
@@ -296,19 +308,27 @@ impl ProgramGenerator {
     }
 
     fn symbol(&mut self) -> &Symbol {
-        let index = self.rng.usize(..self.symbols.len());
-        &self.symbols[index]
+        let bucket = self
+            .rng
+            .choice([
+                &mut self.integer_symbols,
+                &mut self.string_symbols,
+                &mut self.boolean_symbols,
+            ])
+            .unwrap();
+
+        let index = self.rng.usize(..bucket.len());
+        &bucket[index]
     }
 
     fn symbol_of_type(&mut self, ty: Type) -> Symbol {
-        let matches: Vec<_> = self
-            .symbols
-            .iter()
-            .filter(|symbol| symbol.ty == ty)
-            .cloned()
-            .collect();
+        let bucket = match ty {
+            Type::Integer => &mut self.integer_symbols,
+            Type::String => &mut self.string_symbols,
+            Type::Boolean => &mut self.boolean_symbols,
+        };
 
-        if matches.is_empty() {
+        if bucket.is_empty() {
             return Symbol {
                 name: match ty {
                     Type::Integer => "0".to_string(),
@@ -319,7 +339,7 @@ impl ProgramGenerator {
             };
         }
 
-        matches[self.rng.usize(..matches.len())].clone()
+        bucket[self.rng.usize(..bucket.len())].clone()
     }
 
     fn random_type(&mut self) -> Type {
