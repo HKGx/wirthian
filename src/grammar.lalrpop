@@ -1,13 +1,14 @@
 use crate::ast::*;
 use crate::lexer::{Token, LexicalError};
+use bumpalo::Bump;
 
-grammar<'source>(input: &'source str);
+grammar<'a>(input: &'a str, arena: &'a Bump);
 
 extern {
     type Location = usize;
     type Error = LexicalError;
 
-    enum Token<'source> {
+    enum Token<'a> {
         "and" => Token::And,
         "or" => Token::Or,
         "not" => Token::Not,
@@ -54,17 +55,17 @@ extern {
         "<>" => Token::NumNeq,
         "==" => Token::StrEq,
         "!=" => Token::StrNeq,
-        "IDENT" => Token::Ident(<&'source str>),
+        "IDENT" => Token::Ident(<&'a str>),
         "NUM" => Token::Num(<i32>),
-        "STRING" => Token::StringLit(<&'source str>),
+        "STRING" => Token::StringLit(<&'a str>),
     }
 }
 
-pub Program: Program<'source> = {
+pub Program: Program<'a> = {
     <declarations:Declarations> <instructions:Instructions> => Program { declarations, instructions }
 };
 
-Declarations: Vec<Declaration<'source>> = {
+Declarations: Vec<Declaration<'a>> = {
     <mut decls:Declarations> <decl:Declaration> ";" => {
         decls.push(decl);
         decls
@@ -72,13 +73,13 @@ Declarations: Vec<Declaration<'source>> = {
     => vec![],
 };
 
-Declaration: Declaration<'source> = {
+Declaration: Declaration<'a> = {
     <l:@L> "string" <id:"IDENT"> <r:@R> => Declaration { var_type: Type::String, identifier: id, span: l..r },
     <l:@L> "integer" <id:"IDENT"> <r:@R> => Declaration { var_type: Type::Integer, identifier: id, span: l..r },
     <l:@L> "boolean" <id:"IDENT"> <r:@R> => Declaration { var_type: Type::Boolean, identifier: id, span: l..r },
 };
 
-Instructions: Vec<Statement<'source>> = {
+Instructions: Vec<&'a Statement<'a>> = {
     <mut instrs:Instructions> <instr:SimpleInstr> ";" => {
         instrs.push(instr);
         instrs
@@ -87,27 +88,27 @@ Instructions: Vec<Statement<'source>> = {
 };
 
 #[inline]
-SimpleInstr: Statement<'source> = {
+SimpleInstr: &'a Statement<'a> = {
     MatchedInstr => <>,
     UnmatchedInstr => <>,
 };
 
-MatchedInstr: Statement<'source> = {
+MatchedInstr: &'a Statement<'a> = {
     BaseInstr => <>,
     <l:@L> "for" <id:"IDENT"> ":=" <from:Expr> "to" <to:Expr> "do" <body:MatchedInstr> <r:@R> =>
-        Statement { kind: StmtKind::For { iterator: id, from, to, body: Box::new(body) }, span: l..r },
+        arena.alloc(Statement { kind: StmtKind::For { iterator: id, from, to, body }, span: l..r }),
     <l:@L> "if" <condition:Expr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> <r:@R> => {
         let (elif_branches, else_branch) = tail;
-        Statement { kind: StmtKind::If {
+        arena.alloc(Statement { kind: StmtKind::If {
             condition,
-            then_branch: Box::new(then_branch),
+            then_branch,
             elif_branches,
-            else_branch: Some(Box::new(else_branch)),
-        }, span: l..r }
+            else_branch: Some(else_branch),
+        }, span: l..r })
     },
 };
 
-MatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Statement<'source>) = {
+MatchedTail: (Vec<(&'a Expr<'a>, &'a Statement<'a>)>, &'a Statement<'a>) = {
     "elif" <condition:Expr> "then" <then_branch:MatchedInstr> <tail:MatchedTail> => {
         let mut elifs = vec![(condition, then_branch)];
         elifs.extend(tail.0);
@@ -118,29 +119,29 @@ MatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Statement<'source>) = {
     },
 };
 
-UnmatchedInstr: Statement<'source> = {
+UnmatchedInstr: &'a Statement<'a> = {
     <l:@L> "for" <id:"IDENT"> ":=" <from:Expr> "to" <to:Expr> "do" <body:UnmatchedInstr> <r:@R> =>
-        Statement { kind: StmtKind::For { iterator: id, from, to, body: Box::new(body) }, span: l..r },
+        arena.alloc(Statement { kind: StmtKind::For { iterator: id, from, to, body }, span: l..r }),
     <l:@L> "if" <condition:Expr> "then" <then_branch:SimpleInstr> <r:@R> => {
-        Statement { kind: StmtKind::If {
+        arena.alloc(Statement { kind: StmtKind::If {
             condition,
-            then_branch: Box::new(then_branch),
+            then_branch,
             elif_branches: vec![],
             else_branch: None,
-        }, span: l..r }
+        }, span: l..r })
     },
     <l:@L> "if" <condition:Expr> "then" <then_branch:MatchedInstr> <tail:UnmatchedTail> <r:@R> => {
         let (elif_branches, else_branch) = tail;
-        Statement { kind: StmtKind::If {
+        arena.alloc(Statement { kind: StmtKind::If {
             condition,
-            then_branch: Box::new(then_branch),
+            then_branch,
             elif_branches,
             else_branch,
-        }, span: l..r }
+        }, span: l..r })
     },
 };
 
-UnmatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Option<Box<Statement<'source>>>) = {
+UnmatchedTail: (Vec<(&'a Expr<'a>, &'a Statement<'a>)>, Option<&'a Statement<'a>>) = {
     "elif" <condition:Expr> "then" <then_branch:SimpleInstr> => {
         (vec![(condition, then_branch)], None)
     },
@@ -150,85 +151,85 @@ UnmatchedTail: (Vec<(Expr<'source>, Statement<'source>)>, Option<Box<Statement<'
         (elifs, tail.1)
     },
     "else" <else_branch:UnmatchedInstr> => {
-        (vec![], Some(Box::new(else_branch)))
+        (vec![], Some(else_branch))
     },
 };
 
 #[inline]
-BaseInstr: Statement<'source> = {
+BaseInstr: &'a Statement<'a> = {
     AssignStat => <>,
-    <l:@L> "begin" <instrs:Instructions> "end" <r:@R> => Statement { kind: StmtKind::Block(instrs), span: l..r },
+    <l:@L> "begin" <instrs:Instructions> "end" <r:@R> => arena.alloc(Statement { kind: StmtKind::Block(instrs), span: l..r }),
     OutputStat => <>,
-    <l:@L> "break" <r:@R> => Statement { kind: StmtKind::Break, span: l..r },
-    <l:@L> "continue" <r:@R> => Statement { kind: StmtKind::Continue, span: l..r },
-    <l:@L> "exit" <r:@R> => Statement { kind: StmtKind::Exit, span: l..r },
+    <l:@L> "break" <r:@R> => arena.alloc(Statement { kind: StmtKind::Break, span: l..r }),
+    <l:@L> "continue" <r:@R> => arena.alloc(Statement { kind: StmtKind::Continue, span: l..r }),
+    <l:@L> "exit" <r:@R> => arena.alloc(Statement { kind: StmtKind::Exit, span: l..r }),
 };
 
 #[inline]
-AssignStat: Statement<'source> = {
-    <l:@L> <id:"IDENT"> ":=" <e:Expr> <r:@R> => Statement { kind: StmtKind::Assign(id, e), span: l..r },
+AssignStat: &'a Statement<'a> = {
+    <l:@L> <id:"IDENT"> ":=" <e:Expr> <r:@R> => arena.alloc(Statement { kind: StmtKind::Assign(id, e), span: l..r }),
 };
 
 #[inline]
-OutputStat: Statement<'source> = {
-    <l:@L> "print" "(" <e:Expr> ")" <r:@R> => Statement { kind: StmtKind::Print(e), span: l..r },
+OutputStat: &'a Statement<'a> = {
+    <l:@L> "print" "(" <e:Expr> ")" <r:@R> => arena.alloc(Statement { kind: StmtKind::Print(e), span: l..r }),
 };
 
 #[inline]
-FullExpr: Expr<'source> = {
+FullExpr: &'a Expr<'a> = {
     <e:Expr> => e,
 };
 
-pub Expr: Expr<'source> = {
+pub Expr: &'a Expr<'a> = {
     #[precedence(level="1")]
-    <l:@L> <n:"NUM"> <r:@R> => Expr { kind: ExprKind::Number(n), span: l..r },
-    <l:@L> <s:"STRING"> <r:@R> => Expr { kind: ExprKind::StringLit(s), span: l..r },
-    <l:@L> <id:"IDENT"> <r:@R> => Expr { kind: ExprKind::Identifier(id), span: l..r },
-    <l:@L> "true" <r:@R> => Expr { kind: ExprKind::True, span: l..r },
-    <l:@L> "false" <r:@R> => Expr { kind: ExprKind::False, span: l..r },
-    <l:@L> "readint" <r:@R> => Expr { kind: ExprKind::ReadInt, span: l..r },
-    <l:@L> "readstr" <r:@R> => Expr { kind: ExprKind::ReadStr, span: l..r },
-    <l:@L> "readbool" <r:@R> => Expr { kind: ExprKind::ReadBool, span: l..r },
+    <l:@L> <n:"NUM"> <r:@R> => arena.alloc(Expr { kind: ExprKind::Number(n), span: l..r }),
+    <l:@L> <s:"STRING"> <r:@R> => arena.alloc(Expr { kind: ExprKind::StringLit(s), span: l..r }),
+    <l:@L> <id:"IDENT"> <r:@R> => arena.alloc(Expr { kind: ExprKind::Identifier(id), span: l..r }),
+    <l:@L> "true" <r:@R> => arena.alloc(Expr { kind: ExprKind::True, span: l..r }),
+    <l:@L> "false" <r:@R> => arena.alloc(Expr { kind: ExprKind::False, span: l..r }),
+    <l:@L> "readint" <r:@R> => arena.alloc(Expr { kind: ExprKind::ReadInt, span: l..r }),
+    <l:@L> "readstr" <r:@R> => arena.alloc(Expr { kind: ExprKind::ReadStr, span: l..r }),
+    <l:@L> "readbool" <r:@R> => arena.alloc(Expr { kind: ExprKind::ReadBool, span: l..r }),
     "(" <e:FullExpr> ")" => e,
-    <l:@L> "length" "(" <s:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Length(Box::new(s)), span: l..r },
-    <l:@L> "position" "(" <s1:FullExpr> "," <s2:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Position(Box::new(s1), Box::new(s2)), span: l..r },
-    <l:@L> "concatenate" "(" <s1:FullExpr> "," <s2:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Concatenate(Box::new(s1), Box::new(s2)), span: l..r },
-    <l:@L> "substring" "(" <s:FullExpr> "," <n1:FullExpr> "," <n2:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Substring(Box::new(s), Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> "-" <f:Expr> <r:@R> => Expr {
-        kind: ExprKind::Sub(Box::new(Expr { kind: ExprKind::Number(0), span: l..l }), Box::new(f)),
+    <l:@L> "length" "(" <s:FullExpr> ")" <r:@R> => arena.alloc(Expr { kind: ExprKind::Length(s), span: l..r }),
+    <l:@L> "position" "(" <s1:FullExpr> "," <s2:FullExpr> ")" <r:@R> => arena.alloc(Expr { kind: ExprKind::Position(s1, s2), span: l..r }),
+    <l:@L> "concatenate" "(" <s1:FullExpr> "," <s2:FullExpr> ")" <r:@R> => arena.alloc(Expr { kind: ExprKind::Concatenate(s1, s2), span: l..r }),
+    <l:@L> "substring" "(" <s:FullExpr> "," <n1:FullExpr> "," <n2:FullExpr> ")" <r:@R> => arena.alloc(Expr { kind: ExprKind::Substring(s, n1, n2), span: l..r }),
+    <l:@L> "-" <f:Expr> <r:@R> => arena.alloc(Expr {
+        kind: ExprKind::Sub(arena.alloc(Expr { kind: ExprKind::Number(0), span: l..l }), f),
         span: l..r
-    },
+    }),
 
     #[precedence(level="2")]
     #[assoc(side="left")]
-    <l:@L> <t:Expr> "*" <f:Expr> <r:@R> => Expr { kind: ExprKind::Mul(Box::new(t), Box::new(f)), span: l..r },
-    <l:@L> <t:Expr> "/" <f:Expr> <r:@R> => Expr { kind: ExprKind::Div(Box::new(t), Box::new(f)), span: l..r },
-    <l:@L> <t:Expr> "%" <f:Expr> <r:@R> => Expr { kind: ExprKind::Mod(Box::new(t), Box::new(f)), span: l..r },
+    <l:@L> <t:Expr> "*" <f:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Mul(t, f), span: l..r }),
+    <l:@L> <t:Expr> "/" <f:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Div(t, f), span: l..r }),
+    <l:@L> <t:Expr> "%" <f:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Mod(t, f), span: l..r }),
 
     #[precedence(level="3")]
     #[assoc(side="left")]
-    <l:@L> <n:Expr> "+" <t:Expr> <r:@R> => Expr { kind: ExprKind::Add(Box::new(n), Box::new(t)), span: l..r },
-    <l:@L> <n:Expr> "-" <t:Expr> <r:@R> => Expr { kind: ExprKind::Sub(Box::new(n), Box::new(t)), span: l..r },
+    <l:@L> <n:Expr> "+" <t:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Add(n, t), span: l..r }),
+    <l:@L> <n:Expr> "-" <t:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Sub(n, t), span: l..r }),
 
     #[precedence(level="4")]
     #[assoc(side="none")]
-    <l:@L> <n1:Expr> "=" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:Expr> "<" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Less(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:Expr> "<=" <n2:Expr> <r:@R> => Expr { kind: ExprKind::LessEq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:Expr> ">" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Greater(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:Expr> ">=" <n2:Expr> <r:@R> => Expr { kind: ExprKind::GreaterEq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:Expr> "<>" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <s1:Expr> "==" <s2:Expr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(s1), Box::new(s2)), span: l..r },
-    <l:@L> <s1:Expr> "!=" <s2:Expr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(s1), Box::new(s2)), span: l..r },
+    <l:@L> <n1:Expr> "=" <n2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Eq(n1, n2), span: l..r }),
+    <l:@L> <n1:Expr> "<" <n2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Less(n1, n2), span: l..r }),
+    <l:@L> <n1:Expr> "<=" <n2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::LessEq(n1, n2), span: l..r }),
+    <l:@L> <n1:Expr> ">" <n2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Greater(n1, n2), span: l..r }),
+    <l:@L> <n1:Expr> ">=" <n2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::GreaterEq(n1, n2), span: l..r }),
+    <l:@L> <n1:Expr> "<>" <n2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Neq(n1, n2), span: l..r }),
+    <l:@L> <s1:Expr> "==" <s2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Eq(s1, s2), span: l..r }),
+    <l:@L> <s1:Expr> "!=" <s2:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Neq(s1, s2), span: l..r }),
 
     #[precedence(level="5")]
-    <l:@L> "not" <f:Expr> <r:@R> => Expr { kind: ExprKind::Not(Box::new(f)), span: l..r },
+    <l:@L> "not" <f:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Not(f), span: l..r }),
 
     #[precedence(level="6")]
     #[assoc(side="left")]
-    <l:@L> <t:Expr> "and" <f:Expr> <r:@R> => Expr { kind: ExprKind::And(Box::new(t), Box::new(f)), span: l..r },
+    <l:@L> <t:Expr> "and" <f:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::And(t, f), span: l..r }),
 
     #[precedence(level="7")]
     #[assoc(side="left")]
-    <l:@L> <b:Expr> "or" <t:Expr> <r:@R> => Expr { kind: ExprKind::Or(Box::new(b), Box::new(t)), span: l..r },
+    <l:@L> <b:Expr> "or" <t:Expr> <r:@R> => arena.alloc(Expr { kind: ExprKind::Or(b, t), span: l..r }),
 };

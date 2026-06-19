@@ -193,3 +193,53 @@ parser/parse/1_mib
                         thrpt:  [+13.9%]
                         Performance has improved.
 ```
+
+System precedencji skraca ścieżkę redukcji, ale sam krok redukcji nadal zdejmuje i odkłada symbole na wewnętrznym stosie parsera LALRPOP. Profilowanie przy pomocy `perf` na programach o rozmiarze 1 MiB ujawniło, że największym wąskim gardłem nie była już logika parsera, lecz samo kopiowanie pamięci — `__memmove_avx512` pochłaniał **37.7%** czasu, a kolejne **~7.5%** stanowiły wywołania `malloc`/`free` oraz rekursywne dropy drzew `Box<Expr>`/`Box<Statement>`.
+
+Stos parsera LALRPOP to `Vec<(usize, __Symbol, usize)>`, gdzie `__Symbol` jest generowanym enumem przechowującym wartości nieterminali. Ponieważ `Statement` zajmował 136 bajtów (dwa `Vec` w `Block` i `If`, oraz wariant `(Vec<(Expr, Statement)>, Statement)` zajmujący 160 bajtów), cały `__Symbol` rósł do 168 bajtów, a pojedynczy wpis na stosie do 184 bajtów. Każdy shift-reduce poziomu precedencji (`Expr = ExprN`) zdejmuje jeden taki wpis i odkłada go z powrotem, przy ~7 poziomach na atom wyrażenia dawało to setki megabajtów `memmove` na megabajt wejścia.
+
+Aby tego uniknąć, przerzuciłem AST na alokator arenowy (`bumpalo`). Referencje `Box<Expr>` oraz `Box<Statement>` zostały zastąpione przez `&'a Expr<'a>` i `&'a Statement<'a>`, a akcje w gramatyce przydzielają węzły przez `arena.alloc(...)`. Dzięki temu `Statement` skurczył się ze 136 do 64 bajtów, a `__Symbol` z 168 do 56 bajtów, a generowany enum przechowuje teraz jedynie 8-bajtowe referencje zamiast pełnych wartości. Pojedynczy wpis na stosie parsera spadł z 184 do 72 bajtów, eliminując zarówno `memmove` jak i `malloc`/`free` ze ścieżki krytycznej (arena przydziela pamięć przesuwając wskaźnik, a zwolnienie są to O(1)).
+
+```
+parser/parse/1_kib
+                        time:   [12.08 µs → 8.90 µs]
+                        thrpt:  [85.19 MB/s → 115.7 MB/s]
+                 change:
+                        time:   [−26.3%]
+                        thrpt:  [+35.8%]
+                        Performance has improved.
+
+parser/parse/16_kib
+                        time:   [239.9 µs → 169.1 µs]
+                        thrpt:  [69.13 MB/s → 98.08 MB/s]
+                 change:
+                        time:   [−29.5%]
+                        thrpt:  [+41.9%]
+                        Performance has improved.
+
+parser/parse/64_kib
+                        time:   [1.071 ms → 694.2 µs]
+                        thrpt:  [61.28 MB/s → 94.59 MB/s]
+                 change:
+                        time:   [−35.2%]
+                        thrpt:  [+54.4%]
+                        Performance has improved.
+
+parser/parse/256_kib
+                        time:   [4.460 ms → 2.675 ms]
+                        thrpt:  [58.76 MB/s → 97.97 MB/s]
+                 change:
+                        time:   [−40.0%]
+                        thrpt:  [+66.7%]
+                        Performance has improved.
+
+parser/parse/1_mib
+                        time:   [19.08 ms → 10.50 ms]
+                        thrpt:  [54.95 MB/s → 99.84 MB/s]
+                 change:
+                        time:   [−45.0%]
+                        thrpt:  [+81.7%]
+                        Performance has improved.
+```
+
+Zmiana ta niemal podwoiła przepustowość parsera przy 1 MiB (z 55 do 100 MB/s), a `perf stat` potwierdza spadek cache-misses o 89% oraz branch-misses o 51%. W profilu arenowym `memmove`, `malloc` i `drop_in_place` zniknęły poniżej 0.5% — pozostałym wąskim gardłem jest teraz sam algorytm LR (49.6% w `Parser::drive` oraz 23% w redukcjach-pzekazaniach `Expr = ExprN`), co sugeruje że kolejnym krokiem byłoby zastąpienie parsera wyrażeń LALRPOP ręcznym parserem Pratta.

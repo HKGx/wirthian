@@ -11,10 +11,11 @@ fn main() {
 }
 
 fn parse_program(input: &str) {
+    let arena = bumpalo::Bump::new();
     let lexer = Lexer::new(input);
     let parser = ProgramParser::new();
     let ast = parser
-        .parse(input, lexer)
+        .parse(input, &arena, lexer)
         .expect("generated benchmark input must parse successfully");
     black_box(ast);
 }

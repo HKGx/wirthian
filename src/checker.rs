@@ -26,22 +26,22 @@ pub struct CheckerResult {
     pub errors: Vec<SemanticError>,
 }
 
-struct RawError<'source> {
+struct RawError<'a> {
     pub message: String,
     pub span: Range<usize>,
-    pub related_var: Option<&'source str>,
+    pub related_var: Option<&'a str>,
 }
 
-pub struct Checker<'source> {
-    symbol_table: HashMap<&'source str, Type>,
+pub struct Checker<'a> {
+    symbol_table: HashMap<&'a str, Type>,
     loop_depth: usize,
 
-    errors: Vec<RawError<'source>>,
-    var_occurrences: HashMap<&'source str, Vec<Range<usize>>>,
-    misused_vars: HashSet<&'source str>,
+    errors: Vec<RawError<'a>>,
+    var_occurrences: HashMap<&'a str, Vec<Range<usize>>>,
+    misused_vars: HashSet<&'a str>,
 }
 
-impl<'source> Checker<'source> {
+impl<'a> Checker<'a> {
     pub fn new() -> Self {
         Checker {
             symbol_table: HashMap::new(),
@@ -54,7 +54,7 @@ impl<'source> Checker<'source> {
 
     pub fn check_program(
         mut self,
-        program: &Program<'source>,
+        program: &Program<'a>,
         source: &str,
     ) -> Result<(), CheckerResult> {
         for decl in &program.declarations {
@@ -128,7 +128,7 @@ impl<'source> Checker<'source> {
         }
     }
 
-    fn check_statement(&mut self, stmt: &Statement<'source>) {
+    fn check_statement(&mut self, stmt: &Statement<'a>) {
         match &stmt.kind {
             StmtKind::Assign(id, expr) => {
                 self.var_occurrences
@@ -245,7 +245,7 @@ impl<'source> Checker<'source> {
         }
     }
 
-    fn check_expr(&mut self, expr: &Expr<'source>) -> Option<Type> {
+    fn check_expr(&mut self, expr: &Expr<'a>) -> Option<Type> {
         match &expr.kind {
             ExprKind::Number(_) => Some(Type::Integer),
             ExprKind::StringLit(_) => Some(Type::String),
@@ -348,7 +348,7 @@ impl<'source> Checker<'source> {
         }
     }
 
-    fn expect_type(&mut self, expr: &Expr<'source>, expected: Type) -> Option<Type> {
+    fn expect_type(&mut self, expr: &Expr<'a>, expected: Type) -> Option<Type> {
         let actual = self.check_expr(expr)?;
         if actual != expected {
             let mut related_var = None;

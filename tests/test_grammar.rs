@@ -3,14 +3,14 @@ use interpreter::grammar::{ExprParser, ProgramParser};
 use interpreter::lexer::{Lexer, LexicalError};
 use lalrpop_util::ParseError;
 
-fn parse_program<'source>(input: &'source str) -> Program<'source> {
+fn parse_program<'a>(input: &'a str, arena: &'a bumpalo::Bump) -> Program<'a> {
     ProgramParser::new()
-        .parse(input, Lexer::new(input))
+        .parse(input, arena, Lexer::new(input))
         .unwrap()
 }
 
-fn parse_expr<'source>(input: &'source str) -> Expr<'source> {
-    ExprParser::new().parse(input, Lexer::new(input)).unwrap()
+fn parse_expr<'a>(input: &'a str, arena: &'a bumpalo::Bump) -> &'a Expr<'a> {
+    ExprParser::new().parse(input, arena, Lexer::new(input)).unwrap()
 }
 
 fn assert_ident(expr: &Expr<'_>, expected: &str) {
@@ -23,7 +23,8 @@ fn assert_num(expr: &Expr<'_>, expected: i32) {
 
 #[test]
 fn test_empty_program() {
-    let program = parse_program("");
+    let arena = bumpalo::Bump::new();
+    let program = parse_program("", &arena);
 
     assert!(program.declarations.is_empty());
     assert!(program.instructions.is_empty());
@@ -31,6 +32,7 @@ fn test_empty_program() {
 
 #[test]
 fn test_declarations_and_assignments() {
+    let arena = bumpalo::Bump::new();
     let program = parse_program(
         r#"
         integer x;
@@ -41,6 +43,7 @@ fn test_declarations_and_assignments() {
         name := "Ada";
         ready := true;
         "#,
+        &arena,
     );
 
     assert_eq!(program.declarations.len(), 3);
@@ -77,7 +80,8 @@ fn test_declarations_and_assignments() {
 
 #[test]
 fn test_numeric_expression_precedence_and_associativity() {
-    let expr = parse_expr("1 + 2 * 3 - 4 / 2 % 5");
+    let arena = bumpalo::Bump::new();
+    let expr = parse_expr("1 + 2 * 3 - 4 / 2 % 5", &arena);
 
     match &expr.kind {
         ExprKind::Sub(left, right) => {
@@ -117,7 +121,8 @@ fn test_numeric_expression_precedence_and_associativity() {
 
 #[test]
 fn test_unary_minus_and_parenthesized_numeric_expression() {
-    let expr = parse_expr("-(1 + 2) * -x");
+    let arena = bumpalo::Bump::new();
+    let expr = parse_expr("-(1 + 2) * -x", &arena);
 
     match &expr.kind {
         ExprKind::Mul(left, right) => {
@@ -142,11 +147,13 @@ fn test_unary_minus_and_parenthesized_numeric_expression() {
 
 #[test]
 fn test_string_and_numeric_builtin_expressions() {
+    let arena = bumpalo::Bump::new();
     let program = parse_program(
         r#"
         s := concatenate(readstr, substring("abcdef", 1, 3));
         n := length(s) + position("b", s);
         "#,
+        &arena,
     );
 
     match &program.instructions[0].kind {
@@ -180,7 +187,8 @@ fn test_string_and_numeric_builtin_expressions() {
 
 #[test]
 fn test_boolean_precedence_and_comparisons() {
-    let expr = parse_expr(r#"not false or 1 + 2 * 3 <= 7 and "a" != readstr"#);
+    let arena = bumpalo::Bump::new();
+    let expr = parse_expr(r#"not false or 1 + 2 * 3 <= 7 and "a" != readstr"#, &arena);
 
     match &expr.kind {
         ExprKind::Or(left, right) => {
@@ -199,6 +207,7 @@ fn test_boolean_precedence_and_comparisons() {
 
 #[test]
 fn test_blocks_loops_and_control_flow_statements() {
+    let arena = bumpalo::Bump::new();
     let program = parse_program(
         r#"
         for i := 1 to 10 do begin
@@ -208,6 +217,7 @@ fn test_blocks_loops_and_control_flow_statements() {
             exit;
         end;
         "#,
+        &arena,
     );
 
     assert_eq!(program.instructions.len(), 1);
@@ -238,6 +248,7 @@ fn test_blocks_loops_and_control_flow_statements() {
 
 #[test]
 fn test_if_elif_else_tree() {
+    let arena = bumpalo::Bump::new();
     let program = parse_program(
         r#"
         if x = 0 then print("zero")
@@ -245,6 +256,7 @@ fn test_if_elif_else_tree() {
         elif x = 2 then print("two")
         else print("many");
         "#,
+        &arena,
     );
 
     assert_eq!(program.instructions.len(), 1);
@@ -263,7 +275,7 @@ fn test_if_elif_else_tree() {
             assert!(matches!(elif_branches[1].0.kind, ExprKind::Eq(_, _)));
             assert!(matches!(elif_branches[1].1.kind, StmtKind::Print(_)));
             assert!(matches!(
-                else_branch.as_deref().map(|stmt| &stmt.kind),
+                else_branch.map(|stmt| &stmt.kind),
                 Some(StmtKind::Print(_))
             ));
         }
@@ -273,12 +285,14 @@ fn test_if_elif_else_tree() {
 
 #[test]
 fn test_dangling_else_binds_to_nearest_if() {
+    let arena = bumpalo::Bump::new();
     let program = parse_program(
         r#"
         if outer then
             if inner then print("inner")
             else print("else");
         "#,
+        &arena,
     );
 
     match &program.instructions[0].kind {
@@ -310,8 +324,9 @@ fn test_dangling_else_binds_to_nearest_if() {
 
 #[test]
 fn test_program_parser_reports_lexical_errors() {
+    let arena = bumpalo::Bump::new();
     let err = ProgramParser::new()
-        .parse("x := @;", Lexer::new("x := @;"))
+        .parse("x := @;", &arena, Lexer::new("x := @;"))
         .unwrap_err();
 
     assert!(matches!(
@@ -322,8 +337,9 @@ fn test_program_parser_reports_lexical_errors() {
 
 #[test]
 fn test_program_parser_rejects_missing_semicolon() {
+    let arena = bumpalo::Bump::new();
     let err = ProgramParser::new()
-        .parse("integer x x := 1;", Lexer::new("integer x x := 1;"))
+        .parse("integer x x := 1;", &arena, Lexer::new("integer x x := 1;"))
         .unwrap_err();
 
     assert!(matches!(err, ParseError::UnrecognizedToken { .. }));

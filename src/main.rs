@@ -23,10 +23,11 @@ fn main() -> miette::Result<()> {
         print(x);
     ";
 
+    let arena = bumpalo::Bump::new();
     let lexer = lexer::Lexer::new(source_code);
     let parser = grammar::ProgramParser::new();
 
-    match parser.parse(source_code, lexer) {
+    match parser.parse(source_code, &arena, lexer) {
         Ok(ast) => {
             let checker = checker::Checker::new();
             match checker.check_program(&ast, source_code) {

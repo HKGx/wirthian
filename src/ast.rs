@@ -8,39 +8,39 @@ pub enum Type {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Expr<'source> {
-    pub kind: ExprKind<'source>,
+pub struct Expr<'a> {
+    pub kind: ExprKind<'a>,
     pub span: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ExprKind<'source> {
+pub enum ExprKind<'a> {
     Number(i32),
-    StringLit(&'source str),
-    Identifier(&'source str),
+    StringLit(&'a str),
+    Identifier(&'a str),
     True,
     False,
 
-    Add(Box<Expr<'source>>, Box<Expr<'source>>),
-    Sub(Box<Expr<'source>>, Box<Expr<'source>>),
-    Mul(Box<Expr<'source>>, Box<Expr<'source>>),
-    Div(Box<Expr<'source>>, Box<Expr<'source>>),
-    Mod(Box<Expr<'source>>, Box<Expr<'source>>),
+    Add(&'a Expr<'a>, &'a Expr<'a>),
+    Sub(&'a Expr<'a>, &'a Expr<'a>),
+    Mul(&'a Expr<'a>, &'a Expr<'a>),
+    Div(&'a Expr<'a>, &'a Expr<'a>),
+    Mod(&'a Expr<'a>, &'a Expr<'a>),
 
-    Concatenate(Box<Expr<'source>>, Box<Expr<'source>>),
-    Substring(Box<Expr<'source>>, Box<Expr<'source>>, Box<Expr<'source>>),
-    Length(Box<Expr<'source>>),
-    Position(Box<Expr<'source>>, Box<Expr<'source>>),
+    Concatenate(&'a Expr<'a>, &'a Expr<'a>),
+    Substring(&'a Expr<'a>, &'a Expr<'a>, &'a Expr<'a>),
+    Length(&'a Expr<'a>),
+    Position(&'a Expr<'a>, &'a Expr<'a>),
 
-    Not(Box<Expr<'source>>),
-    And(Box<Expr<'source>>, Box<Expr<'source>>),
-    Or(Box<Expr<'source>>, Box<Expr<'source>>),
-    Eq(Box<Expr<'source>>, Box<Expr<'source>>),
-    Neq(Box<Expr<'source>>, Box<Expr<'source>>),
-    Less(Box<Expr<'source>>, Box<Expr<'source>>),
-    LessEq(Box<Expr<'source>>, Box<Expr<'source>>),
-    Greater(Box<Expr<'source>>, Box<Expr<'source>>),
-    GreaterEq(Box<Expr<'source>>, Box<Expr<'source>>),
+    Not(&'a Expr<'a>),
+    And(&'a Expr<'a>, &'a Expr<'a>),
+    Or(&'a Expr<'a>, &'a Expr<'a>),
+    Eq(&'a Expr<'a>, &'a Expr<'a>),
+    Neq(&'a Expr<'a>, &'a Expr<'a>),
+    Less(&'a Expr<'a>, &'a Expr<'a>),
+    LessEq(&'a Expr<'a>, &'a Expr<'a>),
+    Greater(&'a Expr<'a>, &'a Expr<'a>),
+    GreaterEq(&'a Expr<'a>, &'a Expr<'a>),
 
     ReadInt,
     ReadStr,
@@ -48,42 +48,42 @@ pub enum ExprKind<'source> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Statement<'source> {
-    pub kind: StmtKind<'source>,
+pub struct Statement<'a> {
+    pub kind: StmtKind<'a>,
     pub span: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum StmtKind<'source> {
-    Assign(&'source str, Expr<'source>),
+pub enum StmtKind<'a> {
+    Assign(&'a str, &'a Expr<'a>),
     If {
-        condition: Expr<'source>,
-        then_branch: Box<Statement<'source>>,
-        elif_branches: Vec<(Expr<'source>, Statement<'source>)>,
-        else_branch: Option<Box<Statement<'source>>>,
+        condition: &'a Expr<'a>,
+        then_branch: &'a Statement<'a>,
+        elif_branches: Vec<(&'a Expr<'a>, &'a Statement<'a>)>,
+        else_branch: Option<&'a Statement<'a>>,
     },
     For {
-        iterator: &'source str,
-        from: Expr<'source>,
-        to: Expr<'source>,
-        body: Box<Statement<'source>>,
+        iterator: &'a str,
+        from: &'a Expr<'a>,
+        to: &'a Expr<'a>,
+        body: &'a Statement<'a>,
     },
-    Block(Vec<Statement<'source>>),
-    Print(Expr<'source>),
+    Block(Vec<&'a Statement<'a>>),
+    Print(&'a Expr<'a>),
     Break,
     Continue,
     Exit,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Declaration<'source> {
+pub struct Declaration<'a> {
     pub var_type: Type,
-    pub identifier: &'source str,
+    pub identifier: &'a str,
     pub span: Range<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Program<'source> {
-    pub declarations: Vec<Declaration<'source>>,
-    pub instructions: Vec<Statement<'source>>,
+pub struct Program<'a> {
+    pub declarations: Vec<Declaration<'a>>,
+    pub instructions: Vec<&'a Statement<'a>>,
 }
