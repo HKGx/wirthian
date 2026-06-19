@@ -1,0 +1,10 @@
+integer a; integer b; integer tmp; integer i; integer k;
+
+for k := 1 to 50000 do begin
+    a := 0; b := 1;
+    for i := 1 to 30 do begin
+        tmp := a + b; a := b; b := tmp;
+    end;
+end;
+print(b);
+print("\n");

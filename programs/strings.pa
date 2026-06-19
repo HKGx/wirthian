@@ -1,0 +1,11 @@
+integer i; integer p; integer n; string s; string t;
+
+s := "ab";
+for i := 1 to 20 do s := concatenate(s, s);
+n := length(s);
+t := substring(s, 100000, 64);
+p := position(s, t);
+print(n);
+print("\n");
+print(p);
+print("\n");

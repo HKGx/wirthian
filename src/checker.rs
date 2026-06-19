@@ -22,6 +22,7 @@ impl Diagnostic for SemanticError {
     }
 }
 
+#[derive(Debug)]
 pub struct CheckerResult {
     pub errors: Vec<SemanticError>,
 }

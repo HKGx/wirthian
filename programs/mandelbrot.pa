@@ -1,0 +1,26 @@
+integer width; integer height; integer maxiter; integer scale;
+integer row; integer col; integer cr; integer ci;
+integer zr; integer zi; integer zr2; integer zi2; integer iter; integer escaped;
+string chars; string line; string c;
+
+width := 78; height := 40; maxiter := 80; scale := 4096;
+chars := " .:-=+*#%@";
+
+for row := 0 to height - 1 do begin
+    line := "";
+    for col := 0 to width - 1 do begin
+        cr := col * 3 * scale / width - 2 * scale;
+        ci := row * 2 * scale / height - scale;
+        zr := 0; zi := 0; iter := 0; escaped := 0;
+        for iter := 1 to maxiter do begin
+            zr2 := zr * zr / scale;
+            zi2 := zi * zi / scale;
+            if zr2 + zi2 > 4 * scale then begin escaped := 1; break; end;
+            zi := 2 * zr * zi / scale + ci;
+            zr := zr2 - zi2 + cr;
+        end;
+        if escaped = 1 then c := substring(chars, iter % 10 + 1, 1) else c := " ";
+        line := concatenate(line, c);
+    end;
+    print(concatenate(line, "\n"));
+end;

@@ -1,7 +1,10 @@
-use interpreter::{checker, grammar, highlighter, lexer};
+use interpreter::{checker, grammar, highlighter, interp, lexer};
 use miette::{MietteHandlerOpts, Report};
+use std::fs;
+use std::io::{self, BufReader, BufWriter};
+use std::process::ExitCode;
 
-fn main() -> miette::Result<()> {
+fn main() -> ExitCode {
     miette::set_hook(Box::new(|_| {
         Box::new(
             MietteHandlerOpts::new()
@@ -11,44 +14,52 @@ fn main() -> miette::Result<()> {
     }))
     .expect("failed to set miette hook");
 
-    let source_code = "
-    integer x;
-    string y;
+    let mut args = std::env::args().skip(1);
+    let path = match (args.next().as_deref(), args.next()) {
+        (Some("run"), Some(file)) => file,
+        (Some(file), _) if file != "run" => file.to_string(),
+        _ => {
+            eprintln!("Usage: interpreter run <file.pa>");
+            return ExitCode::from(2);
+        }
+    };
 
-    x := 10;
-    x := concatenate(\"A\", \"B\");
-    y := substring(x, 1, 2);
-
-    if x > 5 then
-        print(x);
-    ";
+    let source = match fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Nie można odczytać pliku '{path}': {e}");
+            return ExitCode::from(2);
+        }
+    };
 
     let arena = bumpalo::Bump::new();
-    let lexer = lexer::Lexer::new(source_code);
+    let lex = lexer::Lexer::new(&source);
     let parser = grammar::ProgramParser::new();
 
-    match parser.parse(source_code, &arena, lexer) {
-        Ok(ast) => {
-            let checker = checker::Checker::new();
-            match checker.check_program(&ast, source_code) {
-                Ok(_) => {
-                    println!("Analiza semantyczna zakończona sukcesem.");
-                    println!("Program nie zawiera błędów typowania!");
-                }
-                Err(report) => {
-                    eprintln!("ZNALEZIONO BŁĘDY SEMANTYCZNE\n");
-                    for err in report.errors {
-                        eprintln!("{:?}", Report::new(err));
-                    }
-                }
-            }
-        }
+    let ast = match parser.parse(&source, &arena, lex) {
+        Ok(ast) => ast,
         Err(e) => {
-            // For parsing errors, we can also use miette if we wrap them
-            // But for now let's just print them
-            println!("Błąd parsowania: {:?}", e);
+            println!("Błąd parsowania: {e:?}");
+            return ExitCode::from(1);
         }
+    };
+
+    if let Err(report) = checker::Checker::new().check_program(&ast, &source) {
+        eprintln!("ZNALEZIONO BŁĘDY SEMANTYCZNE\n");
+        for err in report.errors {
+            eprintln!("{:?}", Report::new(err));
+        }
+        return ExitCode::from(1);
     }
 
-    Ok(())
+    let stdin = BufReader::new(io::stdin());
+    let stdout = io::stdout();
+    let mut interp = interp::Interpreter::new(&ast, stdin, BufWriter::new(stdout.lock()));
+    if let Err(e) = interp.run(&ast) {
+        let _ = interp.flush();
+        eprintln!("Błąd wykonania: {e}");
+        return ExitCode::from(1);
+    }
+    let _ = interp.flush();
+    ExitCode::SUCCESS
 }

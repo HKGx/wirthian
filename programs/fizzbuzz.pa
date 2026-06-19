@@ -1,0 +1,9 @@
+integer i;
+
+for i := 1 to 100 do begin
+    if i % 15 = 0 then print("FizzBuzz")
+    elif i % 3 = 0 then print("Fizz")
+    elif i % 5 = 0 then print("Buzz")
+    else print(i);
+    print("\n");
+end;
