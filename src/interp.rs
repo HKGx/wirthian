@@ -29,7 +29,8 @@ enum Flow {
 
 pub struct Interpreter<'a, R, W> {
     env: Vec<Value>,
-    slots: HashMap<&'a str, usize>,
+    names: Vec<&'a str>,
+    var_types: Vec<Type>,
     string_cache: HashMap<&'a str, Rc<str>>,
     input: R,
     output: W,
@@ -37,11 +38,13 @@ pub struct Interpreter<'a, R, W> {
 
 impl<'a, R: BufRead, W: Write> Interpreter<'a, R, W> {
     pub fn new(program: &Program<'a>, input: R, output: W) -> Self {
-        let mut slots = HashMap::with_capacity(program.declarations.len());
+        let mut names = Vec::with_capacity(program.declarations.len());
         let mut env = Vec::with_capacity(program.declarations.len());
+        let mut var_types = Vec::with_capacity(program.declarations.len());
 
         for decl in &program.declarations {
-            slots.insert(decl.identifier, env.len());
+            names.push(decl.identifier);
+            var_types.push(decl.var_type);
             env.push(match decl.var_type {
                 Type::Integer => Value::Integer(0),
                 Type::String => Value::Str(Rc::from("")),
@@ -51,7 +54,8 @@ impl<'a, R: BufRead, W: Write> Interpreter<'a, R, W> {
 
         Interpreter {
             env,
-            slots,
+            names,
+            var_types,
             string_cache: HashMap::new(),
             input,
             output,
@@ -73,17 +77,21 @@ impl<'a, R: BufRead, W: Write> Interpreter<'a, R, W> {
     }
 
     fn slot(&self, name: &'a str) -> usize {
-        *self
-            .slots
-            .get(name)
+        self.names
+            .iter()
+            .position(|n| *n == name)
             .unwrap_or_else(|| panic!("undeclared variable: {name}"))
     }
 
     fn exec(&mut self, stmt: &Statement<'a>) -> Result<Flow, RuntimeError> {
         match &stmt.kind {
             StmtKind::Assign(id, expr) => {
-                let val = self.eval(expr)?;
                 let slot = self.slot(id);
+                let val = match self.var_types[slot] {
+                    Type::Integer => Value::Integer(self.eval_int(expr)?),
+                    Type::String => Value::Str(self.eval_str(expr)?),
+                    Type::Boolean => Value::Boolean(self.eval_bool(expr)?),
+                };
                 self.env[slot] = val;
                 Ok(Flow::Normal)
             }
@@ -115,21 +123,12 @@ impl<'a, R: BufRead, W: Write> Interpreter<'a, R, W> {
                 to,
                 body,
             } => {
-                let from_val = self.eval_int(from)?;
+                let mut cur = self.eval_int(from)?;
                 let to_val = self.eval_int(to)?;
                 let slot = self.slot(iterator);
 
-                self.env[slot] = Value::Integer(from_val);
-
-                loop {
-                    let cur = match self.env[slot] {
-                        Value::Integer(n) => n,
-                        _ => return Err(RuntimeError::TypeMismatch),
-                    };
-
-                    if cur > to_val {
-                        break;
-                    }
+                while cur <= to_val {
+                    self.env[slot] = Value::Integer(cur);
 
                     match self.exec(body)? {
                         Flow::Normal | Flow::Continue => {}
@@ -137,8 +136,12 @@ impl<'a, R: BufRead, W: Write> Interpreter<'a, R, W> {
                         Flow::Exit => return Ok(Flow::Exit),
                     }
 
-                    self.env[slot] = Value::Integer(cur.wrapping_add(1));
+                    match cur.checked_add(1) {
+                        Some(next) => cur = next,
+                        None => break,
+                    }
                 }
+
                 Ok(Flow::Normal)
             }
             StmtKind::Block(stmts) => {
@@ -311,23 +314,134 @@ impl<'a, R: BufRead, W: Write> Interpreter<'a, R, W> {
     }
 
     fn eval_int(&mut self, expr: &Expr<'a>) -> Result<i32, RuntimeError> {
-        match self.eval(expr)? {
-            Value::Integer(n) => Ok(n),
-            _ => Err(RuntimeError::TypeMismatch),
+        match &expr.kind {
+            ExprKind::Number(n) => Ok(*n),
+            ExprKind::Identifier(id) => {
+                let slot = self.slot(id);
+                match self.env[slot] {
+                    Value::Integer(n) => Ok(n),
+                    _ => Err(RuntimeError::TypeMismatch),
+                }
+            }
+            ExprKind::Add(a, b) => Ok(self.eval_int(a)?.wrapping_add(self.eval_int(b)?)),
+            ExprKind::Sub(a, b) => Ok(self.eval_int(a)?.wrapping_sub(self.eval_int(b)?)),
+            ExprKind::Mul(a, b) => Ok(self.eval_int(a)?.wrapping_mul(self.eval_int(b)?)),
+            ExprKind::Div(a, b) => {
+                let r = self.eval_int(b)?;
+                if r == 0 {
+                    return Err(RuntimeError::DivisionByZero);
+                }
+                Ok(self.eval_int(a)?.wrapping_div(r))
+            }
+            ExprKind::Mod(a, b) => {
+                let r = self.eval_int(b)?;
+                if r == 0 {
+                    return Err(RuntimeError::DivisionByZero);
+                }
+                Ok(self.eval_int(a)?.wrapping_rem(r))
+            }
+            ExprKind::Length(s) => Ok(self.eval_str(s)?.chars().count() as i32),
+            ExprKind::Position(hay, needle) => {
+                Ok(position(&self.eval_str(hay)?, &self.eval_str(needle)?))
+            }
+            ExprKind::ReadInt => {
+                let mut line = String::new();
+                if self.input.read_line(&mut line)? == 0 {
+                    return Ok(0);
+                }
+                Ok(line.trim().parse::<i32>().unwrap_or(0))
+            }
+            _ => match self.eval(expr)? {
+                Value::Integer(n) => Ok(n),
+                _ => Err(RuntimeError::TypeMismatch),
+            },
         }
     }
 
     fn eval_bool(&mut self, expr: &Expr<'a>) -> Result<bool, RuntimeError> {
-        match self.eval(expr)? {
-            Value::Boolean(b) => Ok(b),
-            _ => Err(RuntimeError::TypeMismatch),
+        match &expr.kind {
+            ExprKind::True => Ok(true),
+            ExprKind::False => Ok(false),
+            ExprKind::Identifier(id) => {
+                let slot = self.slot(id);
+                match self.env[slot] {
+                    Value::Boolean(b) => Ok(b),
+                    _ => Err(RuntimeError::TypeMismatch),
+                }
+            }
+            ExprKind::Not(a) => Ok(!self.eval_bool(a)?),
+            ExprKind::And(a, b) => {
+                if !self.eval_bool(a)? {
+                    return Ok(false);
+                }
+                Ok(self.eval_bool(b)?)
+            }
+            ExprKind::Or(a, b) => {
+                if self.eval_bool(a)? {
+                    return Ok(true);
+                }
+                Ok(self.eval_bool(b)?)
+            }
+            ExprKind::Less(a, b) => Ok(self.eval_int(a)? < self.eval_int(b)?),
+            ExprKind::LessEq(a, b) => Ok(self.eval_int(a)? <= self.eval_int(b)?),
+            ExprKind::Greater(a, b) => Ok(self.eval_int(a)? > self.eval_int(b)?),
+            ExprKind::GreaterEq(a, b) => Ok(self.eval_int(a)? >= self.eval_int(b)?),
+            ExprKind::ReadBool => {
+                let mut line = String::new();
+                if self.input.read_line(&mut line)? == 0 {
+                    return Ok(false);
+                }
+                Ok(line.trim() == "true")
+            }
+            _ => match self.eval(expr)? {
+                Value::Boolean(b) => Ok(b),
+                _ => Err(RuntimeError::TypeMismatch),
+            },
         }
     }
 
     fn eval_str(&mut self, expr: &Expr<'a>) -> Result<Rc<str>, RuntimeError> {
-        match self.eval(expr)? {
-            Value::Str(s) => Ok(s),
-            _ => Err(RuntimeError::TypeMismatch),
+        match &expr.kind {
+            ExprKind::StringLit(s) => {
+                if let Some(existing) = self.string_cache.get(s) {
+                    return Ok(Rc::clone(existing));
+                }
+                let unescaped = Rc::from(unescape_string(s).as_str());
+                self.string_cache.insert(s, Rc::clone(&unescaped));
+                Ok(unescaped)
+            }
+            ExprKind::Identifier(id) => {
+                let slot = self.slot(id);
+                match &self.env[slot] {
+                    Value::Str(s) => Ok(Rc::clone(s)),
+                    _ => Err(RuntimeError::TypeMismatch),
+                }
+            }
+            ExprKind::Concatenate(a, b) => {
+                let av = self.eval_str(a)?;
+                let bv = self.eval_str(b)?;
+                let mut combined = String::with_capacity(av.len() + bv.len());
+                combined.push_str(&av);
+                combined.push_str(&bv);
+                Ok(Rc::from(combined.as_str()))
+            }
+            ExprKind::Substring(s, pos, len) => {
+                let sv = self.eval_str(s)?;
+                Ok(substring(&sv, self.eval_int(pos)?, self.eval_int(len)?))
+            }
+            ExprKind::ReadStr => {
+                let mut line = String::new();
+                if self.input.read_line(&mut line)? == 0 {
+                    return Ok(Rc::from(""));
+                }
+                let s = line.strip_suffix('\n').unwrap_or(&line);
+                let s = s.strip_suffix('\r').unwrap_or(s);
+                Ok(Rc::from(s))
+            }
+            _ => match self.eval(expr)? {
+                Value::Str(s) => Ok(s),
+                _ => Err(RuntimeError::TypeMismatch),
+            },
         }
     }
 }
