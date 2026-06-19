@@ -143,3 +143,53 @@ parser/parse/1_mib
                         thrpt:  [+6.3%]
                         Performance has improved.
 ```
+
+Atrybut `#[inline]` eliminuje jedynie wywołanie funkcji akcji. Sam krok redukcji w tabeli LR nadal ma miejsce. Profilowanie przy pomocy `samply` na programach o rozmiarze 1 MiB ujawniło, że głównym wąskim gardłem parsera był narzut związany z przechodzeniem przez kolejne poziomy nieterminałów w gramatyce wyrażeń.
+
+Wyrażenia były zdefiniowane jako łańcuch ośmiu nieterminałów:
+
+```
+Expr → OrExpr → AndExpr → NotExpr → CompareExpr → AddExpr → MulExpr → UnaryExpr → PrimaryExpr
+```
+
+Każdy atom wyrażenia przechodził przez dziewięć kroków redukcji - jeden dla stworzenia atomu oraz osiem dalszych, będących zwykłymi przekazanami, gdzie każdy z nich zdejmuje z wewnętrznego stosu symbol, wyciąga z niego `Expr`, owija go w nowy symbol i odkłada z powrotem.
+
+LALRPOP posiada wbudowany system poziomów precedencji, który automatycznie generuje warstwy nieterminałów zamiast ręcznego pisania ciągów. Zastąpiłem osiem nieterminałów jedną produkcją `Expr` z siedmioma poziomami precedencji oznaczonymi atrybutami `#[precedence(level="N")]` oraz `#[assoc(side="...")]`:
+
+Ponieważ system precedencji zastępuje rekursywne odwołania do `Expr` wersjami ograniczonymi do odpowiedniego poziomu (`Expr1`, `Expr2`, ...), wyrażenia w nawiasach oraz argumenty funkcji wbudowanych (`length`, `position`, itd.) wymagają nieterminału akceptującego pełne wyrażenia.
+
+Zmiana ta eliminuje dwa kroki na każdy atom wyrażenia (scalenie `Expr→OrExpr` na szczycie oraz `UnaryExpr→PrimaryExpr` na dnie), zachowując istniejąca poprawność precedencji operatorów.
+
+```
+parser/parse/1_kib
+                        time:   [14.71 µs → 12.21 µs]
+                        thrpt:  [69.98 MB/s → 84.28 MB/s]
+                 change:
+                        time:   [−17.0%]
+                        thrpt:  [+20.4%]
+                        Performance has improved.
+
+parser/parse/16_kib
+                        time:   [272.0 µs → 234.7 µs]
+                        thrpt:  [60.97 MB/s → 70.68 MB/s]
+                 change:
+                        time:   [−13.7%]
+                        thrpt:  [+15.9%]
+                        Performance has improved.
+
+parser/parse/256_kib
+                        time:   [5.168 ms → 4.519 ms]
+                        thrpt:  [50.72 MB/s → 58.00 MB/s]
+                 change:
+                        time:   [−12.6%]
+                        thrpt:  [+14.4%]
+                        Performance has improved.
+
+parser/parse/1_mib
+                        time:   [20.84 ms → 18.30 ms]
+                        thrpt:  [50.31 MB/s → 57.29 MB/s]
+                 change:
+                        time:   [−12.2%]
+                        thrpt:  [+13.9%]
+                        Performance has improved.
+```

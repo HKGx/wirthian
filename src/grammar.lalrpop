@@ -174,60 +174,13 @@ OutputStat: Statement<'source> = {
     <l:@L> "print" "(" <e:Expr> ")" <r:@R> => Statement { kind: StmtKind::Print(e), span: l..r },
 };
 
-pub Expr: Expr<'source> = {
-    OrExpr => <>,
-};
-
-OrExpr: Expr<'source> = {
-    <l:@L> <b:OrExpr> "or" <t:AndExpr> <r:@R> => Expr { kind: ExprKind::Or(Box::new(b), Box::new(t)), span: l..r },
-    AndExpr => <>,
-};
-
-AndExpr: Expr<'source> = {
-    <l:@L> <t:AndExpr> "and" <f:NotExpr> <r:@R> => Expr { kind: ExprKind::And(Box::new(t), Box::new(f)), span: l..r },
-    NotExpr => <>,
-};
-
-NotExpr: Expr<'source> = {
-    <l:@L> "not" <f:NotExpr> <r:@R> => Expr { kind: ExprKind::Not(Box::new(f)), span: l..r },
-    CompareExpr => <>,
-};
-
 #[inline]
-CompareExpr: Expr<'source> = {
-    <l:@L> <n1:AddExpr> "=" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:AddExpr> "<" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Less(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:AddExpr> "<=" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::LessEq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:AddExpr> ">" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Greater(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:AddExpr> ">=" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::GreaterEq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <n1:AddExpr> "<>" <n2:AddExpr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(n1), Box::new(n2)), span: l..r },
-    <l:@L> <s1:AddExpr> "==" <s2:AddExpr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(s1), Box::new(s2)), span: l..r },
-    <l:@L> <s1:AddExpr> "!=" <s2:AddExpr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(s1), Box::new(s2)), span: l..r },
-    AddExpr => <>,
+FullExpr: Expr<'source> = {
+    <e:Expr> => e,
 };
 
-AddExpr: Expr<'source> = {
-    <l:@L> <n:AddExpr> "+" <t:MulExpr> <r:@R> => Expr { kind: ExprKind::Add(Box::new(n), Box::new(t)), span: l..r },
-    <l:@L> <n:AddExpr> "-" <t:MulExpr> <r:@R> => Expr { kind: ExprKind::Sub(Box::new(n), Box::new(t)), span: l..r },
-    MulExpr => <>,
-};
-
-MulExpr: Expr<'source> = {
-    <l:@L> <t:MulExpr> "*" <f:UnaryExpr> <r:@R> => Expr { kind: ExprKind::Mul(Box::new(t), Box::new(f)), span: l..r },
-    <l:@L> <t:MulExpr> "/" <f:UnaryExpr> <r:@R> => Expr { kind: ExprKind::Div(Box::new(t), Box::new(f)), span: l..r },
-    <l:@L> <t:MulExpr> "%" <f:UnaryExpr> <r:@R> => Expr { kind: ExprKind::Mod(Box::new(t), Box::new(f)), span: l..r },
-    UnaryExpr => <>,
-};
-
-UnaryExpr: Expr<'source> = {
-    <l:@L> "-" <f:UnaryExpr> <r:@R> => Expr {
-        kind: ExprKind::Sub(Box::new(Expr { kind: ExprKind::Number(0), span: l..l }), Box::new(f)),
-        span: l..r
-    },
-    PrimaryExpr => <>,
-};
-
-PrimaryExpr: Expr<'source> = {
+pub Expr: Expr<'source> = {
+    #[precedence(level="1")]
     <l:@L> <n:"NUM"> <r:@R> => Expr { kind: ExprKind::Number(n), span: l..r },
     <l:@L> <s:"STRING"> <r:@R> => Expr { kind: ExprKind::StringLit(s), span: l..r },
     <l:@L> <id:"IDENT"> <r:@R> => Expr { kind: ExprKind::Identifier(id), span: l..r },
@@ -236,9 +189,46 @@ PrimaryExpr: Expr<'source> = {
     <l:@L> "readint" <r:@R> => Expr { kind: ExprKind::ReadInt, span: l..r },
     <l:@L> "readstr" <r:@R> => Expr { kind: ExprKind::ReadStr, span: l..r },
     <l:@L> "readbool" <r:@R> => Expr { kind: ExprKind::ReadBool, span: l..r },
-    "(" <e:Expr> ")" => e,
-    <l:@L> "length" "(" <s:Expr> ")" <r:@R> => Expr { kind: ExprKind::Length(Box::new(s)), span: l..r },
-    <l:@L> "position" "(" <s1:Expr> "," <s2:Expr> ")" <r:@R> => Expr { kind: ExprKind::Position(Box::new(s1), Box::new(s2)), span: l..r },
-    <l:@L> "concatenate" "(" <s1:Expr> "," <s2:Expr> ")" <r:@R> => Expr { kind: ExprKind::Concatenate(Box::new(s1), Box::new(s2)), span: l..r },
-    <l:@L> "substring" "(" <s:Expr> "," <n1:Expr> "," <n2:Expr> ")" <r:@R> => Expr { kind: ExprKind::Substring(Box::new(s), Box::new(n1), Box::new(n2)), span: l..r },
+    "(" <e:FullExpr> ")" => e,
+    <l:@L> "length" "(" <s:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Length(Box::new(s)), span: l..r },
+    <l:@L> "position" "(" <s1:FullExpr> "," <s2:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Position(Box::new(s1), Box::new(s2)), span: l..r },
+    <l:@L> "concatenate" "(" <s1:FullExpr> "," <s2:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Concatenate(Box::new(s1), Box::new(s2)), span: l..r },
+    <l:@L> "substring" "(" <s:FullExpr> "," <n1:FullExpr> "," <n2:FullExpr> ")" <r:@R> => Expr { kind: ExprKind::Substring(Box::new(s), Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> "-" <f:Expr> <r:@R> => Expr {
+        kind: ExprKind::Sub(Box::new(Expr { kind: ExprKind::Number(0), span: l..l }), Box::new(f)),
+        span: l..r
+    },
+
+    #[precedence(level="2")]
+    #[assoc(side="left")]
+    <l:@L> <t:Expr> "*" <f:Expr> <r:@R> => Expr { kind: ExprKind::Mul(Box::new(t), Box::new(f)), span: l..r },
+    <l:@L> <t:Expr> "/" <f:Expr> <r:@R> => Expr { kind: ExprKind::Div(Box::new(t), Box::new(f)), span: l..r },
+    <l:@L> <t:Expr> "%" <f:Expr> <r:@R> => Expr { kind: ExprKind::Mod(Box::new(t), Box::new(f)), span: l..r },
+
+    #[precedence(level="3")]
+    #[assoc(side="left")]
+    <l:@L> <n:Expr> "+" <t:Expr> <r:@R> => Expr { kind: ExprKind::Add(Box::new(n), Box::new(t)), span: l..r },
+    <l:@L> <n:Expr> "-" <t:Expr> <r:@R> => Expr { kind: ExprKind::Sub(Box::new(n), Box::new(t)), span: l..r },
+
+    #[precedence(level="4")]
+    #[assoc(side="none")]
+    <l:@L> <n1:Expr> "=" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:Expr> "<" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Less(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:Expr> "<=" <n2:Expr> <r:@R> => Expr { kind: ExprKind::LessEq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:Expr> ">" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Greater(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:Expr> ">=" <n2:Expr> <r:@R> => Expr { kind: ExprKind::GreaterEq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <n1:Expr> "<>" <n2:Expr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(n1), Box::new(n2)), span: l..r },
+    <l:@L> <s1:Expr> "==" <s2:Expr> <r:@R> => Expr { kind: ExprKind::Eq(Box::new(s1), Box::new(s2)), span: l..r },
+    <l:@L> <s1:Expr> "!=" <s2:Expr> <r:@R> => Expr { kind: ExprKind::Neq(Box::new(s1), Box::new(s2)), span: l..r },
+
+    #[precedence(level="5")]
+    <l:@L> "not" <f:Expr> <r:@R> => Expr { kind: ExprKind::Not(Box::new(f)), span: l..r },
+
+    #[precedence(level="6")]
+    #[assoc(side="left")]
+    <l:@L> <t:Expr> "and" <f:Expr> <r:@R> => Expr { kind: ExprKind::And(Box::new(t), Box::new(f)), span: l..r },
+
+    #[precedence(level="7")]
+    #[assoc(side="left")]
+    <l:@L> <b:Expr> "or" <t:Expr> <r:@R> => Expr { kind: ExprKind::Or(Box::new(b), Box::new(t)), span: l..r },
 };
