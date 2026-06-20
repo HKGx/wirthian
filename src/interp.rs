@@ -142,6 +142,8 @@ impl<'a, R: BufRead, W: Write> Interpreter<'a, R, W> {
                     }
                 }
 
+                self.env[slot] = Value::Integer(cur);
+
                 Ok(Flow::Normal)
             }
             StmtKind::Block(stmts) => {
