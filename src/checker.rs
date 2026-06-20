@@ -84,34 +84,15 @@ impl<'a> Checker<'a> {
         } else {
             let mut final_errors = Vec::new();
 
-            let overlaps =
-                |a: &Range<usize>, b: &Range<usize>| -> bool { a.start < b.end && b.start < a.end };
-
             for err in self.errors {
                 let mut labels = Vec::new();
 
-                labels.push(LabeledSpan::new(
-                    Some(err.message.clone()),
-                    err.span.start,
-                    err.span.end - err.span.start,
-                ));
+                labels.push(LabeledSpan::at(err.span.clone(), err.message.clone()));
 
                 if let Some(var) = err.related_var {
                     if let Some(occurrences) = self.var_occurrences.get(var) {
-                        let mut sorted_occurrences = occurrences.clone();
-                        sorted_occurrences.sort_by_key(|s| s.start);
-
-                        let mut accepted_spans: Vec<Range<usize>> = vec![err.span.clone()];
-
-                        for occ_span in sorted_occurrences {
-                            if !accepted_spans.iter().any(|s| overlaps(s, &occ_span)) {
-                                labels.push(LabeledSpan::new(
-                                    None,
-                                    occ_span.start,
-                                    occ_span.end - occ_span.start,
-                                ));
-                                accepted_spans.push(occ_span);
-                            }
+                        for occ_span in occurrences {
+                            labels.push(LabeledSpan::underline(occ_span.clone()));
                         }
                     }
                 }
