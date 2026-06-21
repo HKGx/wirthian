@@ -38,9 +38,8 @@ jobs:
               run: wasm-pack build --target bundler -- --no-default-features --features wasm
 
             - name: Install web dependencies
-              working-directory: web
               shell: devenv shell bash -- -e {0}
-              run: npm ci || npm install
+              run: npm --prefix web ci || npm --prefix web install
 
             - name: Build frontend
               shell: devenv shell bash -- -e {0}
