@@ -1,6 +1,6 @@
 # Język
 
-Pozwoliłem sobie nadać nazwę językowi - **Wirthian**. Wynika to oczywiście z podobieństw składniowych do języków stworzonych przez Niklausa Wirtha.
+Zostałem zmuszony przez narzędzia do nadania jakiejś nazwy języka, więc wybór padł na **Wirthian**. Wynika to oczywiście z podobieństw składniowych do języków stworzonych przez Niklausa Wirtha.
 
 ## Odkryte problemy z gramatyką:
 
@@ -65,7 +65,7 @@ else lose;
 
 ## Zmiany
 
-Pierwotna gramatyka miałą bardzo ograniczone wsparcie dla wartości logicznych, więc rozszerzyłem ją, żeby każde wyrażenie mogło być traktowane jako wartość logiczna. Dopiero na poziomie checkera sprawdzam czy wyrażenie ma odpowiedni typ dopasowany do operacji (if, operatory, etc.).
+Pierwotna gramatyka miała bardzo ograniczone wsparcie dla wartości logicznych, więc rozszerzyłem ją, żeby każde wyrażenie mogło być traktowane jako wartość logiczna. Dopiero na poziomie checkera sprawdzam czy wyrażenie ma odpowiedni typ dopasowany do operacji (if, operatory, etc.).
 
 
 ## Krok po kroku
@@ -242,4 +242,4 @@ parser/parse/1_mib
                         Performance has improved.
 ```
 
-Zmiana ta niemal podwoiła przepustowość parsera przy 1 MiB (z 55 do 100 MB/s), a `perf stat` potwierdza spadek cache-misses o 89% oraz branch-misses o 51%. W profilu arenowym `memmove`, `malloc` i `drop_in_place` zniknęły poniżej 0.5% — pozostałym wąskim gardłem jest teraz sam algorytm LR (49.6% w `Parser::drive` oraz 23% w redukcjach-pzekazaniach `Expr = ExprN`), co sugeruje że kolejnym krokiem byłoby zastąpienie parsera wyrażeń LALRPOP ręcznym parserem Pratta.
+Zmiana ta niemal podwoiła przepustowość parsera przy 1 MiB (z 55 do 100 MB/s), a `perf stat` potwierdza spadek cache-misses o 89% oraz branch-misses o 51%. W profilu arenowym `memmove`, `malloc` i `drop_in_place` zniknęły poniżej 0.5% — pozostałym wąskim gardłem jest teraz sam algorytm LR (49.6% w `Parser::drive` oraz 23% w redukcjach-pzekazaniach `Expr = ExprN`), co sugeruje że kolejnym krokiem byłoby zastąpienie parsera wyrażeń ręcznym parserem Pratta lub innym precedence climbing parserem.
