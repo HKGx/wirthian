@@ -3,14 +3,28 @@ name = "interpreter"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = ["cli"]
+cli = ["miette/fancy", "miette/syntect-highlighter", "dep:owo-colors", "dep:syntect"]
+wasm = ["dep:wasm-bindgen", "dep:console_error_panic_hook"]
+
 [dependencies]
 lalrpop-util = "0.23.1"
 logos = "0.16.1"
-miette = { version = "7.6.0", features = ["fancy", "syntect-highlighter"] }
+miette = { version = "7.6.0", default-features = false, features = ["derive"] }
 thiserror = "2.0.11"
-owo-colors = "4.2.3"
-syntect = "5.1.0"
 bumpalo = "3.19.0"
+owo-colors = { version = "4.2.3", optional = true }
+syntect = { version = "5.1.0", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+console_error_panic_hook = { version = "0.1", optional = true }
+
+[[bin]]
+name = "interpreter"
+required-features = ["cli"]
 
 [build-dependencies]
 lalrpop = "0.23.1"
