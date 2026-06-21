@@ -87,13 +87,17 @@ impl<'a> Checker<'a> {
             for err in self.errors {
                 let mut labels = Vec::new();
 
-                labels.push(LabeledSpan::at(err.span.clone(), err.message.clone()));
+                labels.push(LabeledSpan::new_primary_with_span(
+                    Some(err.message.clone()),
+                    err.span.clone(),
+                ));
 
-                if let Some(var) = err.related_var {
-                    if let Some(occurrences) = self.var_occurrences.get(var) {
-                        for occ_span in occurrences {
-                            labels.push(LabeledSpan::underline(occ_span.clone()));
-                        }
+                if let Some(occurrences) = err
+                    .related_var
+                    .and_then(|var| self.var_occurrences.get(var))
+                {
+                    for occ_span in occurrences {
+                        labels.push(LabeledSpan::underline(occ_span.clone()));
                     }
                 }
 
