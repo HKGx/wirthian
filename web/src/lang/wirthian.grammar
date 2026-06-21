@@ -1,0 +1,97 @@
+@top Program { (Declaration | Statement)* }
+
+@skip { space }
+
+@precedence {
+  unaryP,
+  mulDivP @left,
+  addSubP @left,
+  compareP @left,
+  notP,
+  andP @left,
+  orP @left,
+  elifClause @right,
+  elseClause @right
+}
+
+kw<term> { @specialize[@name={term}]<Identifier, term> }
+
+Declaration { TypeKeyword Identifier ";" }
+
+TypeKeyword { kw<"integer"> | kw<"string"> | kw<"boolean"> }
+
+Statement {
+  AssignStatement |
+  PrintStatement |
+  IfStatement |
+  ForStatement |
+  BlockStatement |
+  BreakStatement |
+  ContinueStatement |
+  ExitStatement
+}
+
+AssignStatement { Identifier AssignOp Expr ";" }
+
+PrintStatement { kw<"print"> "(" Expr ")" ";" }
+
+IfStatement {
+  kw<"if"> Expr kw<"then"> Statement
+  (!elifClause kw<"elif"> Expr kw<"then"> Statement)*
+  (!elseClause kw<"else"> Statement)?
+}
+
+ForStatement { kw<"for"> Identifier AssignOp Expr kw<"to"> Expr kw<"do"> Statement }
+
+BlockStatement { kw<"begin"> Statement* kw<"end"> }
+
+BreakStatement { kw<"break"> ";" }
+ContinueStatement { kw<"continue"> ";" }
+ExitStatement { kw<"exit"> ";" }
+
+Expr {
+  Expr !orP kw<"or"> Expr |
+  Expr !andP kw<"and"> Expr |
+  kw<"not"> !notP Expr |
+  Expr !compareP CompareOp<"=" | "<" | "<=" | ">" | ">=" | "<>" | "==" | "!="> Expr |
+  Expr !addSubP ArithOp<"+" | "-"> Expr |
+  Expr !mulDivP ArithOp<"*" | "/" | "%"> Expr |
+  ArithOp<"+" | "-"> !unaryP Expr |
+  Atom |
+  "(" Expr ")" |
+  FunctionCall
+}
+
+Atom {
+  Number |
+  String |
+  Boolean |
+  Identifier |
+  kw<"readint"> |
+  kw<"readstr"> |
+  kw<"readbool">
+}
+
+Boolean { kw<"true"> | kw<"false"> }
+
+FunctionCall {
+  kw<"length"> "(" Expr ")" |
+  kw<"position"> "(" Expr "," Expr ")" |
+  kw<"concatenate"> "(" Expr "," Expr ")" |
+  kw<"substring"> "(" Expr "," Expr "," Expr ")"
+}
+
+@tokens {
+  ArithOp<expr> { expr }
+  CompareOp<expr> { expr }
+  AssignOp { ":=" }
+
+  Number { @digit+ }
+  String { '"' (!["\\] | "\\" _)* '"' }
+  Identifier { $[a-zA-Z_] $[a-zA-Z0-9_]* }
+  space { @whitespace+ }
+
+  "(" ")" ";" ","
+}
+
+@detectDelim
