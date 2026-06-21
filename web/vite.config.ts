@@ -5,6 +5,7 @@ import { lezer } from "@lezer/generator/rollup";
 
 // https://vite.dev/config/
 export default defineConfig({
+    base: "./",
     plugins: [svelte(), wasm(), lezer()],
     server: {
         fs: { allow: [".."] },
