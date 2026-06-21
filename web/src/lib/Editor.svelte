@@ -2,14 +2,21 @@
     import { onMount, onDestroy } from "svelte";
     import { EditorState } from "@codemirror/state";
     import { EditorView } from "@codemirror/view";
+    import {
+        lintGutter,
+        setDiagnostics,
+        type Diagnostic,
+    } from "@codemirror/lint";
     import { basicSetup } from "codemirror";
     import { wirthian } from "../lang/wirthian";
 
     let {
         value = $bindable(""),
+        diagnostics = [],
         oninput,
     }: {
         value: string;
+        diagnostics?: readonly Diagnostic[];
         oninput?: (v: string) => void;
     } = $props();
 
@@ -22,6 +29,7 @@
                 doc: value,
                 extensions: [
                     basicSetup,
+                    lintGutter(),
                     wirthian(),
                     EditorView.theme({
                         "&": { height: "100%", fontSize: "13px" },
@@ -46,6 +54,12 @@
             view.dispatch({
                 changes: { from: 0, to: view.state.doc.length, insert: value },
             });
+        }
+    });
+
+    $effect(() => {
+        if (view) {
+            view.dispatch(setDiagnostics(view.state, diagnostics));
         }
     });
 </script>

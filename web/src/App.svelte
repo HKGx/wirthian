@@ -1,6 +1,7 @@
 <script lang="ts">
     import Editor from "./lib/Editor.svelte";
     import { run_source } from "./lib/wasm";
+    import type { Diagnostic } from "@codemirror/lint";
 
     const examples = Object.entries(
         import.meta.glob("../../programs/*.pa", {
@@ -20,6 +21,7 @@
     let stdin = $state("");
     let output = $state("");
     let error = $state<string | null>(null);
+    let diagnostics = $state<Diagnostic[]>([]);
     let running = $state(false);
 
     function pick(name: string) {
@@ -29,6 +31,7 @@
             source = ex.code;
             output = "";
             error = null;
+            diagnostics = [];
         }
     }
 
@@ -38,9 +41,11 @@
             const r = run_source(source, stdin);
             output = r.output;
             error = r.error ?? null;
+            diagnostics = r.diagnostics as Diagnostic[];
         } catch (e) {
             error = String(e);
             output = "";
+            diagnostics = [];
         } finally {
             running = false;
         }
@@ -63,7 +68,11 @@
                 </select>
             </div>
             <div class="editor-wrap">
-                <Editor bind:value={source} />
+                <Editor
+                    bind:value={source}
+                    {diagnostics}
+                    oninput={() => (diagnostics = [])}
+                />
             </div>
         </div>
         <div class="side-pane">
@@ -72,7 +81,7 @@
             <button onclick={run} disabled={running}>
                 {running ? "Wykonywanie…" : "Uruchom"}
             </button>
-            <label for="output">Wyjście</label>
+            <label for="output">{error ? "Błąd wykonania" : "Wyjście"}</label>
             <pre id="output" class={error ? "err" : ""}>{error ?? output}</pre>
         </div>
     </section>

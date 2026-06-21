@@ -9,7 +9,12 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = ["cli"]
 cli = ["miette/fancy", "miette/syntect-highlighter", "dep:owo-colors", "dep:syntect"]
-wasm = ["dep:wasm-bindgen", "dep:console_error_panic_hook"]
+wasm = [
+    "dep:wasm-bindgen",
+    "dep:console_error_panic_hook",
+    "dep:serde",
+    "dep:serde-wasm-bindgen",
+]
 
 [dependencies]
 lalrpop-util = "0.23.1"
@@ -21,6 +26,8 @@ owo-colors = { version = "4.2.3", optional = true }
 syntect = { version = "5.1.0", optional = true }
 wasm-bindgen = { version = "0.2", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
+serde = { version = "1.0.228", features = ["derive"], optional = true }
+serde-wasm-bindgen = { version = "0.6.5", optional = true }
 
 [[bin]]
 name = "interpreter"
