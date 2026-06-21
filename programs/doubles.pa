@@ -1,0 +1,6 @@
+integer n; integer i;
+n := readint;
+for i := 1 to n do begin
+  print(i * i);
+  print("\n");
+end;
